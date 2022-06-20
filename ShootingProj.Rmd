@@ -1,0 +1,187 @@
+---
+title: "NYPD Shooting Data Report"
+author: "T.V"
+date: '2022-06-09'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Setting up tidyverse package
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+## Importing in data from online website
+
+```{r import}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+```
+
+## Reading in the data imported
+
+```{r read}
+ny_shooting <- read_csv(url_in)
+
+
+```
+
+## Specify and list out all the columns
+
+```{r spec}
+
+ny_shooting
+
+```
+
+Here I am selecting and removing all columns that I think won't serve a use for my analysis.
+
+```{r select_remove}
+
+nyshoot <- ny_shooting %>% 
+  select(-c(INCIDENT_KEY,PRECINCT,JURISDICTION_CODE,X_COORD_CD,Y_COORD_CD,Latitude,Longitude,Lon_Lat, LOCATION_DESC, ))
+
+
+nyshoot
+
+```
+
+To summarize the above, I imported the data and went through the columns and deleted the ones I think will not serve a purpose for my analysis, such as the latitude/longitude, x/y coordinates, jurisdiction codes, and so on. I changed the OCCUR_DATE column type to the appropriate date type.
+
+# Tidying and transforming the data
+
+Here I saw that the perpetrators in terms of age, sex, and race had a large amount of missing data. Because of this huge amount of missing data, I've chosen to label them as unknown as part of my analysis.
+
+```{r}
+
+
+nyshoot_2 <- nyshoot %>% select(everything())
+
+# Returns column names and missing values
+
+lapply(nyshoot_2, function(x) sum(is.na(x)))
+```
+
+## Transforming the data
+
+Here I have transformed all the data types to their respective types.
+
+```{r}
+
+#Tidying it up and then transforming it
+
+nyshoot_2 <- nyshoot_2 %>%
+    replace_na(list(PERP_AGE_GROUP = "UNKNOWN", PERP_SEX = "UNKNOWN", PERP_RACE = "UNKNOWN"))
+
+nyshoot_2 <- nyshoot_2 %>% mutate(
+  PERP_AGE_GROUP=recode(PERP_AGE_GROUP, UNKNOWN="UNKNOWN"),
+  PERP_SEX=recode(PERP_SEX, U="UNKNOWN"),
+  PERP_RACE=recode(PERP_RACE, UNKNOWN="UNKNOWN"),
+  VIC_AGE_GROUP=recode(VIC_AGE_GROUP, UNKNOWN="UNKNOWN"),
+  VIC_SEX=recode(VIC_SEX, U="UNKNOWN"),
+  VIC_RACE=recode(VIC_RACE, UNKNOWN="UNKNOWN"),
+  PERP_AGE_GROUP=as.factor(PERP_AGE_GROUP),
+  PERP_SEX=as.factor(PERP_SEX),
+  PERP_RACE=as.factor(PERP_RACE),
+  VIC_AGE_GROUP=as.factor(VIC_AGE_GROUP),
+  VIC_SEX=as.factor(VIC_SEX),
+  VIC_RACE=as.factor(VIC_RACE),
+  BORO = as.factor(BORO),
+  OCCUR_DATE = mdy(OCCUR_DATE)
+)
+
+#Summarization of data
+
+summary(nyshoot_2)
+
+```
+
+# Visualization and analysis
+
+## Bar Chart Visualization
+
+Here I made a visualization showing which neighborhoods of New York city had the most occurrences of shooting incidents. As we can see Brooklyn is the top borough, with Staten Island all the way on the bottom.
+
+```{r}
+
+g <- ggplot(nyshoot_2, aes(x=BORO)) +
+              geom_bar() +
+              labs(
+                title = "What parts of New York City do most crimes happen?",
+                x = "NYC Boroughs",
+                y = "Number of occurances") + theme_classic()
+
+g
+```
+
+## Line chart visualization
+
+Here I visualized the number of incidents that happened at specific times during the day (in military time to account for time zone differences). As you can see, most of these crimes happen during dusk hours.
+
+```{r}
+
+nyshoot_2 <- nyshoot_2 %>%
+  mutate(OCCUR_HOUR = hour(hms(as.character(OCCUR_TIME))))
+
+nyshoot_hr <- nyshoot_2 %>%
+  group_by(OCCUR_HOUR) %>% count()
+  
+# Extracting hour time from OCCUR_DATE and making a seperate data variable for it
+```
+
+```{r}
+
+g <- ggplot(nyshoot_hr, aes(x = OCCUR_HOUR, y = n)) +
+  geom_line() +
+  labs(
+    title = "What time are risk levels high?",
+    x = "Hours of incident occurances", 
+    y = "Number of incident occurances"
+  ) + theme_classic()
+g
+
+```
+
+## Linear model
+
+Here I made a linear model based on these variables to make a prediction on how probable it is that the incident is also a case of murder as well based on the statistical murder flag data given. Based on the estimates given, the perpetrator whose race is white changes the likelihood of a murder related incident by about ten percent.
+
+```{r}
+
+model <- glm.fit <- glm( STATISTICAL_MURDER_FLAG ~ PERP_RACE + PERP_SEX + PERP_AGE_GROUP + OCCUR_HOUR, data = nyshoot_2)
+
+summary(model)
+```
+
+## Analysis of data
+
+After going through the data, there are some interesting points that stood out. Most the perpetrators as well as victims were male, Black and White Hispanic make up a majority of the victims, and although a large chunk of the sexes of the perpetrators are unknown, a majority of it is made up of males. A majority of these victims and perpetrators were also from ages 44 to \<18.
+
+Some questions this might raise to me would be why are Brooklyn and the Bronx leading in terms of crime? Why is Staten Island so low? Is there any other links between all these variables that can be made?
+
+```{r}
+
+table(
+  nyshoot_2 %>% select(VIC_SEX, PERP_SEX)
+)
+```
+
+```{r}
+
+table(
+  nyshoot_2 %>% select(PERP_AGE_GROUP, VIC_AGE_GROUP)
+)
+
+table(
+  nyshoot_2 %>% select(PERP_RACE, VIC_RACE)
+)
+```
+
+## Bias identification
+
+On the topic of crime in America, which is something that a lot of people have implicit bias already in the present day. With things like social media and the internet in this day and age, it is incredibly easy and also hard for people to develop bias towards this topic. With so much information, it can be overwhelming.
+
+My personal bias I would say coming into this data analysis, even though I've never visited New York City, is that I had some innate feelings regarding New York and crime, to me it seemed like the two went hand in hand somewhat. Even growing up my parents always told me to not go there because of their fear of crime in that city (even though they've never visited either). Although I did have these bias regarding this topic on crime in New York City, when analyzing data it is of utmost importance that you look at things objectively, which I focused on doing while reading through and analyzing the data.
